@@ -1,0 +1,57 @@
+const express = require('express');
+const { Pool } = require('pg');
+const fs = require('fs');
+const path = require('path');
+const app = express();
+app.use(express.json());
+
+// Profissionais
+const profPath = path.join(__dirname,'profissionais.json');
+const profissionais = JSON.parse(fs.readFileSync(profPath));
+
+// PostgreSQL (Render cria variáveis de ambiente automaticamente)
+const pool = new Pool({
+    host: process.env.DB_HOST,
+    user: process.env.DB_USER,
+    password: process.env.DB_PASSWORD,
+    database: process.env.DB_NAME,
+    port: 5432
+});
+
+// ----- API de Profissionais -----
+app.get('/profissionais', (req, res) => res.json(profissionais));
+app.get('/profissionais/nome/:nome', (req,res)=>{
+    const nome = req.params.nome.toLowerCase();
+    const resultado = profissionais.filter(p=>p.nome.toLowerCase().includes(nome));
+    res.json(resultado);
+});
+app.get('/profissionais/especialidade/:esp', (req,res)=>{
+    const esp = req.params.esp.toLowerCase();
+    const resultado = profissionais.filter(p=>p.especialidade.toLowerCase()===esp);
+    res.json(resultado);
+});
+
+// ----- Agendamento -----
+app.post('/agendamentos', async (req,res)=>{
+    const {nome, cpf, profissional, data} = req.body;
+    const resultado = await pool.query(
+        'INSERT INTO agendamentos(nome, cpf, profissional, data) VALUES($1,$2,$3,$4) RETURNING *',
+        [nome, cpf, profissional, data]
+    );
+    res.json(resultado.rows[0]);
+});
+
+app.get('/agendamentos/:cpf', async (req,res)=>{
+    const cpf = req.params.cpf;
+    const resultado = await pool.query('SELECT * FROM agendamentos WHERE cpf=$1',[cpf]);
+    res.json(resultado.rows);
+});
+
+app.delete('/agendamentos/:cpf', async (req,res)=>{
+    const cpf = req.params.cpf;
+    const resultado = await pool.query('DELETE FROM agendamentos WHERE cpf=$1 RETURNING *',[cpf]);
+    res.json({message:`Agendamentos removidos: ${resultado.rowCount}`});
+});
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, ()=>console.log(`Backend rodando na porta ${PORT}`));
